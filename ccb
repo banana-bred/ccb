@@ -1,0 +1,145 @@
+#!/bin/zsh
+
+local PROGRAM=$(basename "${(%):-%x}")
+local CHROOT="${HOME}/chroot"
+local install=true
+local force=false
+local upgrade
+
+usage() {
+    # Prints general usage of the script.
+
+    cat <<help
+
+$PROGRAM
+
+    Build clean chroot in Artix linux and installs the build package
+
+    Run this in the directory containing the desired PKGBUILD.
+
+    usage: ${PROGRAM}  [options]
+
+    options:
+
+    -h                 show this message
+    -f                 run with force (overwrite any existing chroot)
+    --chroot(=) CHROOT choose a different chroot than the default ($HOME/chroot)
+    --no-install       don't install
+
+help
+}
+
+die() {
+
+  local exit_code=1
+  local error_message="$1"
+
+  echo ""
+	echo "${PROGRAM}: ${error_message}" 1>&2
+
+  exit "${exit_code}"
+}
+
+setup(){
+
+  local answer
+
+  printf "Checking if we have  PKGBUILD ... "
+  [[ -s "PKGBUILD" ]] || die "${PROGRAM} must be run a directory containing a PKGBUILD"
+  print "✔️"
+
+  printf "Checking required programs ... "
+  which mkchroot 1>/dev/null || die "ERROR: needed mkchroot not found (artools-base)"
+  which mkchrootpkg 1>/dev/null || die "ERROR: needed mkchrootpkg not found (artools-pkg)"
+  print "✔️"
+
+  printf "Setting up chroot ... "
+
+  mkdir -p "${CHROOT}"
+  $force && sudo rm -rf "${CHROOT}" && mkdir "${CHROOT}" && return
+
+  while true ; do
+    [[ -d "${CHROOT}/root" ]] && printf "directory ${CHROOT}/root exists and must be removed to procede. Remove it ? [y/n] : " || break
+    read answer
+    answer=${answer:l}
+    case $answer in
+      y | ye | yes*)
+        sudo rm -rf "${CHROOT}" && mkdir "${CHROOT}" && break
+        ;;
+      n | no*)
+      die "❌ Cannot continue with ${CHROOT}/root exists. Remove this existing directory, run ${PROGRAM} with force (-f option), or choost another apparent root directory (--chroot option) to procede."
+        ;;
+      *) ; print "What ? ""'""$answer""'"" is not an option." ;;
+    esac
+  done
+  echo "✔️"
+
+}
+
+build(){
+
+  echo "mkchroot ${CHROOT}/root base-devel"
+  mkchroot ${CHROOT}/root base-devel || die "ERROR: mkchroot ${CHROOT}/root base-devel failed"
+
+  echo "mkchrootpkg -c -r ${CHROOT}"
+  mkchrootpkg -c -r ${CHROOT} || die "ERROR:  mkchrootpkg -c -r ${CHROOT} failed"
+
+  [[ ${install} = false ]] && return
+
+  upgrade=$(ls -t *zst | head -1)
+  sudo pacman -U "${upgrade}"
+
+}
+
+main() {
+
+	while :; do
+		case $1 in
+
+			-h|--help)
+				usage
+				exit 0
+				;;
+
+			-f|--force)
+				force=true
+				;;
+
+      --chroot)
+        [[ $2 ]] && CHROOT="${2}" && shift || die 'ERROR: "--chroot" requires a non-empty option'
+        ;;
+      --chroot=)
+        die 'ERROR: "--chroot" requires a non-empty option'
+        ;;
+      --chroot=?*)
+        CHROOT="${1#*=}"
+        ;;
+
+      --no-install)
+        install=false
+        ;;
+
+			--)
+				shift
+				break
+				;;
+      -?*)
+        printf 'WARN: Unknown option (ignored): %s\n' "${1}"
+        ;;
+      *)
+				break
+				;;
+
+		esac
+
+		shift
+
+	done
+
+  setup
+
+  build
+
+}
+
+main "$@"
