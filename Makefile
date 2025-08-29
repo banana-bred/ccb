@@ -1,4 +1,4 @@
-NAME   := units
+NAME   := ccb
 PREFIX ?= $${HOME}/.local
 BINDIR ?= $(PREFIX)/bin
 
