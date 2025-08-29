@@ -4,6 +4,7 @@ local PROGRAM=$(basename "${(%):-%x}")
 local CHROOT="${HOME}/chroot"
 local install=true
 local force=false
+local checkspace=true
 local upgrade
 
 usage() {
@@ -24,6 +25,7 @@ $PROGRAM
     -h                 show this message
     -f                 run with force (overwrite any existing chroot)
     --chroot(=) CHROOT choose a different chroot than the default ($HOME/chroot)
+    --no-checkspace    disable CheckSpace, which is will not work with LUKS
     --no-install       don't install
 
 help
@@ -81,6 +83,12 @@ build(){
   echo "mkchroot ${CHROOT}/root base-devel"
   mkchroot ${CHROOT}/root base-devel || die "ERROR: mkchroot ${CHROOT}/root base-devel failed"
 
+  # -- disable CheckSpace in the chroot's pacman.conf if asked to do so
+  if [[ "$checkspace" == false ]] ; then
+    echo "Disabling CheckSpace ..."
+    sudo sed -i 's/^[[:space:]]*CheckSpace/# CheckSpace/' "${CHROOT}"/root/etc/pacman.conf
+  fi
+
   echo "mkchrootpkg -c -r ${CHROOT}"
   mkchrootpkg -c -r ${CHROOT} || die "ERROR:  mkchrootpkg -c -r ${CHROOT} failed"
 
@@ -117,6 +125,10 @@ main() {
 
       --no-install)
         install=false
+        ;;
+
+      --no-checkspace)
+        checkspace=false
         ;;
 
 			--)
