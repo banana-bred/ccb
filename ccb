@@ -1,11 +1,9 @@
 #!/bin/zsh
 
-local PROGRAM=$(basename "${(%):-%x}")
-local CHROOT="${HOME}/chroot"
-local install=true
-local force=false
-local checkspace=true
-local upgrade
+PROGRAM=$(basename "${(%):-%x}")
+CHROOT="${HOME}/chroot"
+install=true
+force=false
 
 usage() {
     # Prints general usage of the script.
@@ -18,15 +16,15 @@ $PROGRAM
 
     Run this in the directory containing the desired PKGBUILD.
 
-    usage: ${PROGRAM}  [options]
+    usage: ${PROGRAM} [options]
 
     options:
 
-    -h                 show this message
-    -f                 run with force (overwrite any existing chroot)
-    --chroot(=) CHROOT choose a different chroot than the default ($HOME/chroot)
-    --no-checkspace    disable CheckSpace, which is will not work with LUKS
-    --no-install       don't install
+    -h                           show this message
+    -f                           run with force (overwrite any existing chroot)
+    --chroot(=) CHROOT           choose a different chroot than the default ($HOME/chroot)
+    --no-install                 don't install
+    --mkchrootpkg-flags=<STRING> pass flags as a string to mkchrootpkg
 
 help
 }
@@ -61,7 +59,7 @@ setup(){
   $force && sudo rm -rf "${CHROOT}" && mkdir "${CHROOT}" && return
 
   while true ; do
-    [[ -d "${CHROOT}/root" ]] && printf "directory ${CHROOT}/root exists and must be removed to procede. Remove it ? [y/n] : " || break
+    [[ -d "${CHROOT}/root" ]] && printf "directory ${CHROOT}/root exists and must be removed to proceed. Remove it ? [y/n] : " || break
     read answer
     answer=${answer:l}
     case $answer in
@@ -69,7 +67,7 @@ setup(){
         sudo rm -rf "${CHROOT}" && mkdir "${CHROOT}" && break
         ;;
       n | no*)
-      die "❌ Cannot continue with ${CHROOT}/root exists. Remove this existing directory, run ${PROGRAM} with force (-f option), or choost another apparent root directory (--chroot option) to procede."
+      die "❌ Cannot continue while ${CHROOT}/root exists. Remove this existing directory, run ${PROGRAM} with force (-f option), or choose another apparent root directory (--chroot option) to proceed."
         ;;
       *) ; print "What ? ""'""$answer""'"" is not an option." ;;
     esac
@@ -81,16 +79,20 @@ setup(){
 build(){
 
   echo "mkchroot ${CHROOT}/root base-devel"
-  mkchroot ${CHROOT}/root base-devel || die "ERROR: mkchroot ${CHROOT}/root base-devel failed"
 
-  # -- disable CheckSpace in the chroot's pacman.conf if asked to do so
-  if [[ "$checkspace" == false ]] ; then
-    echo "Disabling CheckSpace ..."
-    sudo sed -i 's/^[[:space:]]*CheckSpace/# CheckSpace/' "${CHROOT}"/root/etc/pacman.conf
-  fi
+  mkchroot "${CHROOT}"/root base-devel || die "ERROR: mkchroot ""/root base-devel failed"
 
   echo "mkchrootpkg -c -r ${CHROOT}"
-  mkchrootpkg -c -r ${CHROOT} || die "ERROR:  mkchrootpkg -c -r ${CHROOT} failed"
+
+  if [ -z "${MKCHROOTPKGFLAGS}" ] ; then
+
+    mkchrootpkg -c -r "${CHROOT}" || die "ERROR:  mkchrootpkg -c -r ${CHROOT} failed"
+
+  else
+
+    mkchrootpkg "${MKCHROOTPKGFLAGS}" -c -r "${CHROOT}" || die "ERROR:  mkchrootpkg ${=MKCHROOTPKGFLAGS} -c -r ${CHROOT} failed"
+
+  fi
 
   [[ ${install} = false ]] && return
 
@@ -123,12 +125,15 @@ main() {
         CHROOT="${1#*=}"
         ;;
 
-      --no-install)
-        install=false
+      --mkchrootpkg-flags=)
+        die 'ERROR: "--mkpkgchroot-flags" requires a non-empty option'
+        ;;
+      --mkchrootpkg-flags=?*)
+        MKCHROOTPKGFLAGS="${1#*=}"
         ;;
 
-      --no-checkspace)
-        checkspace=false
+      --no-install)
+        install=false
         ;;
 
 			--)
