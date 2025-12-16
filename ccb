@@ -4,6 +4,7 @@ PROGRAM=$(basename "${(%):-%x}")
 CHROOT="${HOME}/chroot"
 install=true
 force=false
+typeset -a MKCHROOTPKGFLAGS
 
 usage() {
     # Prints general usage of the script.
@@ -80,18 +81,31 @@ build(){
 
   echo "mkchroot ${CHROOT}/root base-devel"
 
-  mkchroot "${CHROOT}"/root base-devel || die "ERROR: mkchroot ""/root base-devel failed"
+  sudo mkchroot "${CHROOT}"/root base-devel || die "ERROR: mkchroot ""/root base-devel failed"
 
   echo "mkchrootpkg -c -r ${CHROOT}"
 
-  if [ -z "${MKCHROOTPKGFLAGS}" ] ; then
+  # -- keyring + update
+  sudo artix-chroot "${CHROOT}/root" pacman -Sy --noconfirm --needed artix-keyring archlinux-keyring
+  sudo artix-chroot "${CHROOT}/root" pacman-key --init
+  sudo artix-chroot "${CHROOT}/root" pacman-key --populate
+  sudo artix-chroot "${CHROOT}/root" pacman -Syu --noconfirm
 
-    mkchrootpkg -c -r "${CHROOT}" || die "ERROR:  mkchrootpkg -c -r ${CHROOT} failed"
+  # -- same repos as host
+  sudo cp /etc/pacman.conf "${CHROOT}/root/etc/pacman.conf"
+  sudo cp /etc/pacman.d/mirrorlist "${CHROOT}/root/etc/pacman.d/mirrorlist"
+  [[ -f /etc/pacman.d/mirrorlist-arch ]] && sudo cp /etc/pacman.d/mirrorlist-arch "${CHROOT}/root/etc/pacman.d/mirrorlist-arch"
+
+sudo artix-chroot "${CHROOT}/root" pacman -Si git
+
+  if [[ -z "${MKCHROOTPKGFLAGS:-}" ]] ; then
+
+    sudo mkchrootpkg -c -r "${CHROOT}" || die "ERROR:  mkchrootpkg -c -r ${CHROOT} failed"
 
   else
 
-    mkchrootpkg "${MKCHROOTPKGFLAGS}" -c -r "${CHROOT}" || die "ERROR:  mkchrootpkg ${=MKCHROOTPKGFLAGS} -c -r ${CHROOT} failed"
-
+    local -a mkflags=(${(z)MKCHROOTPKGFLAGS})
+    sudo mkchrootpkg "${mkflags[@]}" -c -r "${CHROOT}" || die "ERROR:  mkchrootpkg ${=MKCHROOTPKGFLAGS} -c -r ${CHROOT} failed"
   fi
 
   [[ ${install} = false ]] && return
